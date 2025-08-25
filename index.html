@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Plotagem de coordenadas</title>
+  <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+  <script src="https://unpkg.com/feather-icons"></script>
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBIrM1IF_2TIO922D0wj5iM60NAhniVsDU"></script>
+  <style>
+    :root {
+      --glass-blur: blur(12px);
+      --glass-bg: rgba(255, 255, 255, 0.20);
+      --glass-border: rgba(255, 255, 255, 0.25);
+      --primary-bg: #1a1a1a;
+      --secondary-bg: #2d2d2d;
+      --primary-text: #fff;
+      --secondary-text: #ccc;
+      --shadow: 0 4px 30px rgba(0, 0, 0, 0.10);
+    }
+
+    body {
+      min-height: 100vh;
+      background: var(--primary-bg);
+      color: var(--primary-text);
+      font-family: "Inter", Arial, sans-serif;
+      margin: 0;
+      box-sizing: border-box;
+    }
+    h1 {
+      margin: 18px 0 7px 0;
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+      color: var(--primary-text);
+    }
+    p.app-author {
+      color: var(--secondary-text);
+      font-size: 0.96em;
+      margin: 0 0 15px 0;
+    }
+    .main-panel {
+      background: var(--glass-bg);
+      border-radius: 16px;
+      border: 1px solid var(--glass-border);
+      box-shadow: var(--shadow);
+      backdrop-filter: var(--glass-blur);
+      max-width: 760px;
+      margin: 32px auto 0 auto;
+      padding: 30px 22px 18px 22px;
+      z-index: 2;
+      position: relative;
+    }
+    .inputs-group {
+      display: flex;
+      gap: 22px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+    .custom-file-input {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: var(--glass-bg);
+      border-radius: 12px;
+      border: 1.1px solid var(--glass-border);
+      color: #ffffff;
+      cursor: pointer;
+      transition: background 0.22s;
+      font-size: 1em;
+      padding: 10px 19px;
+      box-shadow: var(--shadow);
+      font-weight: 500;
+    }
+    .custom-file-input:hover,
+    .custom-file-input:focus {
+      background: rgba(255, 255, 255, 0.27);
+      outline: none;
+    }
+    .custom-file-input input {
+      display: none;
+    }
+    .glass-button {
+      padding: 12px 28px;
+      font-size: 1.11em;
+      font-weight: 600;
+      color: #ffffff;
+      background: linear-gradient(100deg, #3257c7 0%, #7c58c8 100%);
+      border: none;
+      border-radius: 16px;
+      cursor: pointer;
+      box-shadow: 0 2px 20px rgba(0, 0, 0, 0.12);
+      transition: background 0.18s, transform 0.18s;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .glass-button:hover {
+      background: linear-gradient(70deg, #547fff 0, #b095f7 100%);
+      transform: scale(1.05);
+    }
+    .docs-list {
+      display: flex;
+      gap: 13px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .doc-card {
+      background: var(--glass-bg);
+      border-radius: 12px;
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+      border: 1.1px solid var(--glass-border);
+      display: flex;
+      align-items: center;
+      padding: 8px 17px;
+      gap: 11px;
+      min-width: 170px;
+      max-width: 320px;
+      font-size: 1em;
+      color: #ffffff;
+      margin-bottom: 3px;
+      transition: background 0.18s;
+    }
+    .doc-card:hover {
+      background: rgba(255, 255, 255, 0.26);
+    }
+    .doc-card .doc-icon {
+      color: #ffffff;
+      font-size: 1.17em;
+      opacity: 0.98;
+      margin-right: 5px;
+      transition: transform 0.17s, color 0.17s;
+    }
+    .doc-card:hover .doc-icon {
+      transform: scale(1.1) rotate(-8deg);
+      color: #cccccc;
+    }
+    #column-selectors, #filters-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 14px;
+      margin: 9px 0 18px 0;
+      background: var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      border-radius: 9px;
+      padding: 10px 18px;
+      box-shadow: 0 2px 16px rgba(0, 0, 0, 0.08);
+      font-size: 0.99em;
+      color: var(--primary-text);
+    }
+    #column-selectors label, #filters-bar label {
+      color: #cccccc;
+      margin-right: 6px;
+      font-weight: 500;
+    }
+     #column-selectors select {
+        background: rgba(0,0,0,0.3);
+        color: #fff;
+        border: 1px solid var(--glass-border);
+        border-radius: 6px;
+        padding: 4px 8px;
+     }
+    .filter-checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin-right: 13px;
+      position: relative;
+    }
+    .filter-checkbox-group input[type="checkbox"] {
+      accent-color: #5273e0;
+      width: 18px;
+      height: 18px;
+      margin-right: 4px;
+    }
+    .filter-checkbox-group .dropdown-btn {
+      background: rgba(255, 255, 255, 0.16);
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      margin-left: 3px;
+      padding: 2px 10px;
+      cursor: pointer;
+      font-size: 0.98em;
+      transition: background 0.17s;
+    }
+    .filter-checkbox-group .dropdown-btn:hover {
+      background: #2d2d2d;
+    }
+    .option-dropdown {
+      display: none;
+      position: absolute;
+      left: 0;
+      top: 28px;
+      min-width: 170px;
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 100;
+      background: rgba(30, 30, 30, 0.98);
+      border-radius: 9px;
+      border: 1px solid #333;
+      box-shadow: 0 4px 28px rgba(0, 0, 0, 0.18);
+      padding: 10px 16px;
+      color: #fff;
+      word-break: break-word;
+    }
+    .option-dropdown.active {
+      display: block;
+      animation: fadeIn 0.18s;
+    }
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    .option-dropdown label {
+      font-size: 0.98em;
+      display: flex;
+      align-items: center;
+      margin-bottom: 6px;
+      color: #ccc;
+      gap: 5px;
+      cursor: pointer;
+    }
+    .option-dropdown label:last-child {
+      margin-bottom: 0;
+    }
+    .hidden {
+      display: none !important;
+    }
+    #feedback {
+      color: #ffdeef;
+      font-size: 1.02em;
+      padding: 5px 0 2px 0;
+      transition: color 0.15s;
+      min-height: 14px;
+    }
+    #map {
+      width: 100%;
+      height: 435px;
+      margin: 29px auto 0 auto;
+      border-radius: 18px;
+      box-shadow: 0 6px 29px rgba(44, 46, 80, 0.15);
+      overflow: hidden;
+      z-index: 1;
+      border: 2px solid rgba(203, 203, 255, 0.08);
+      background: rgba(21, 22, 45, 0.20);
+      backdrop-filter: blur(2px);
+      max-width: 1100px;
+    }
+    @media (max-width: 850px) {
+      .main-panel {
+        max-width: 99vw;
+        padding: 15px 2vw;
+      }
+      #map {
+        height: 250px;
+      }
+      .docs-list {
+        gap: 7px;
+      }
+    }
+    @media (max-width: 540px) {
+      #map {
+        height: 160px;
+      }
+      .main-panel {
+        padding: 0 0 8px 0;
+      }
+      #filters-bar, #column-selectors {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="main-panel">
+    <h1>
+      <span data-feather="map-pin" style="vertical-align: -7px; margin-right: 10px;"></span>
+      Plotagem de coordenadas
+    </h1>
+    <p class="app-author">
+      Criado por Gustavo Godoy Alevado (<a href="mailto:gustavoalevado@pjc.mt.gov.br" style="color: #CCCCCC; text-decoration: underline;">gustavoalevado@pjc.mt.gov.br</a>)
+    </p>
+    <div class="inputs-group">
+      <label for="fileInput" class="custom-file-input">
+        <span data-feather="file-plus"></span> Selecionar arquivos
+        <input type="file" id="fileInput" multiple accept=".csv, .xlsx, .xls" />
+      </label>
+      <button id="plotButton" class="glass-button"><span data-feather="map"></span>Plotar coordenadas</button>
+    </div>
+    <div class="docs-list" id="docsList"></div>
+    <div id="column-selectors" class="hidden">
+      <label for="lat-select">Coluna Latitude:</label>
+      <select id="lat-select"></select>
+      <label for="lng-select">Coluna Longitude:</label>
+      <select id="lng-select"></select>
+    </div>
+    <div id="filters-bar" class="hidden"></div>
+    <div id="feedback"></div>
+  </div>
+  <div id="map"></div>
+  <script>
+    feather.replace();
+
+    function isLatCol(name) {
+      name = (name || "").trim().toLowerCase();
+      return ["lat", "latitude"].some(term => name.includes(term));
+    }
+    function isLngCol(name) {
+      name = (name || "").trim().toLowerCase();
+      return ["lon", "lng", "longitude", "long"].some(term => name.includes(term));
+    }
+    function isHourCol(name) {
+      const lowered = (name || "").toLowerCase();
+      return lowered.includes("hora") || lowered.includes("time");
+    }
+    function excelNumberToTime(n) {
+      if (isNaN(n)) return n;
+      const totalSeconds = Math.round(24 * 60 * 60 * parseFloat(n));
+      const h = Math.floor(totalSeconds / 3600);
+      const m = Math.floor((totalSeconds % 3600) / 60);
+      const s = totalSeconds % 60;
+      return (
+        h.toString().padStart(2, "0") + ":" +
+        m.toString().padStart(2, "0") + ":" +
+        s.toString().padStart(2, "0")
+      );
+    }
+
+    let allRows = [];
+    let headers = [];
+    let map;
+    let markers = [];
+    let fileNames = [];
+    let filteredRows = [];
+    let filterFields = [];
+    let activeFilters = {};
+
+    function setupColumnSelectors() {
+        const latSelect = document.getElementById('lat-select');
+        const lngSelect = document.getElementById('lng-select');
+        latSelect.innerHTML = '';
+        lngSelect.innerHTML = '';
+        
+        let latGuess = -1;
+        let lngGuess = -1;
+
+        headers.forEach((h, idx) => {
+            const option = new Option(h, idx);
+            latSelect.add(option.cloneNode(true));
+            lngSelect.add(option);
+            if (latGuess === -1 && isLatCol(h)) latGuess = idx;
+            if (lngGuess === -1 && isLngCol(h)) lngGuess = idx;
+        });
+
+        if (latGuess !== -1) latSelect.value = latGuess;
+        if (lngGuess !== -1) lngSelect.value = lngGuess;
+
+        document.getElementById('column-selectors').classList.remove('hidden');
+    }
+
+    function guessFilterFields(latIndex, lngIndex) {
+      const candidates = [];
+      headers.forEach((h, idx) => {
+        if (idx != latIndex && idx != lngIndex) {
+          candidates.push({ header: h, idx });
+        }
+      });
+      return candidates;
+    }
+
+    function renderFiltersBar(latIndex, lngIndex) {
+      const bar = document.getElementById("filters-bar");
+      bar.innerHTML = "";
+      filterFields = guessFilterFields(latIndex, lngIndex);
+      if (filterFields.length === 0) {
+        bar.classList.add('hidden');
+        return;
+      };
+
+      filterFields.forEach((field) => {
+        const group = document.createElement("div");
+        group.className = "filter-checkbox-group";
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.id = "filter-cb-" + field.idx;
+        const span = document.createElement("span");
+        span.textContent = field.header;
+        group.appendChild(checkbox);
+        group.appendChild(span);
+        const dropdownBtn = document.createElement("button");
+        dropdownBtn.className = "dropdown-btn";
+        dropdownBtn.type = "button";
+        dropdownBtn.textContent = "Selecionar";
+        dropdownBtn.style.display = "none";
+        group.appendChild(dropdownBtn);
+        const dropdown = document.createElement("div");
+        dropdown.className = "option-dropdown";
+        dropdown.id = "dropdown-" + field.idx;
+        group.appendChild(dropdown);
+
+        dropdownBtn.onclick = (e) => {
+          e.stopPropagation();
+          closeAllDropdowns();
+          dropdown.classList.toggle("active");
+        };
+        
+        function closeAllDropdowns(evt) {
+          document.querySelectorAll(".option-dropdown.active").forEach((dd) => {
+            dd.classList.remove("active");
+          });
+        }
+        document.addEventListener("click", closeAllDropdowns);
+
+        group._renderDropdown = function () {
+          dropdown.innerHTML = "";
+          const uniqOrdered = [];
+          const seen = new Set();
+          allRows.forEach((row) => {
+            let val = row[field.idx];
+            if (val === null || typeof val === "undefined") val = "";
+            const valAsString = String(val);
+            if (!seen.has(valAsString)) {
+              seen.add(valAsString);
+              uniqOrdered.push(val);
+            }
+          });
+          uniqOrdered.forEach((val) => {
+            const lab = document.createElement("label");
+            const cb = document.createElement("input");
+            cb.type = "checkbox";
+            const valAsString = String(val);
+            cb.value = valAsString;
+            cb.checked = (activeFilters[field.idx] || []).includes(valAsString);
+            cb.onchange = function () {
+              if (!activeFilters[field.idx]) activeFilters[field.idx] = [];
+              const currentFilterValue = String(val);
+              if (this.checked) {
+                activeFilters[field.idx].push(currentFilterValue);
+              } else {
+                activeFilters[field.idx] = activeFilters[field.idx].filter((v) => v !== currentFilterValue);
+              }
+              applyFilters();
+            };
+            lab.appendChild(cb);
+            let text = (val === "" || typeof val === "undefined") ? "(vazio)" : val;
+            lab.appendChild(document.createTextNode(" " + text));
+            dropdown.appendChild(lab);
+          });
+        };
+        checkbox.onchange = function () {
+          if (checkbox.checked) {
+            group._renderDropdown();
+            dropdownBtn.style.display = "inline-block";
+          } else {
+            dropdownBtn.style.display = "none";
+            activeFilters[field.idx] = undefined;
+            applyFilters();
+            dropdown.classList.remove("active");
+          }
+        };
+        bar.appendChild(group);
+      });
+      bar.classList.remove("hidden");
+    }
+
+    function updateDocsList(files) {
+      const list = document.getElementById("docsList");
+      list.innerHTML = "";
+      fileNames = [];
+      for (let file of files) {
+        if (!file) continue;
+        fileNames.push(file.name);
+        let div = document.createElement("div");
+        div.className = "doc-card";
+        let icType = file.name.toLowerCase().endsWith(".csv") ? "file-text" : "file";
+        div.innerHTML = `<span class="doc-icon" data-feather="${icType}"></span>
+            <span class="doc-name">${file.name}</span>`;
+        list.appendChild(div);
+      }
+      feather.replace();
+    }
+
+    async function processFiles(files) {
+      allRows = [];
+      headers = [];
+      for (let file of files) {
+        let ext = file.name.split(".").pop().toLowerCase();
+        if (ext === "csv") {
+          const data = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.onerror = reject;
+            reader.readAsText(file, "UTF-8");
+          });
+          let lines = data.split(/\r?\n/).filter((x) => x.trim() !== "");
+          if (lines.length > 0) {
+            let csvHeaders = lines[0].split(/[,;|\t]/);
+            if (headers.length === 0) headers = csvHeaders;
+            for (let i = 1; i < lines.length; i++) {
+                let values = lines[i].split(/[,;|\t]/);
+                if (values.length === headers.length) allRows.push(values);
+            }
+          }
+        } else if (ext === "xls" || ext === "xlsx") {
+          const buffer = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(new Uint8Array(e.target.result));
+            reader.onerror = reject;
+            reader.readAsArrayBuffer(file);
+          });
+          const workbook = XLSX.read(buffer, { type: "array" });
+          const firstSheet = workbook.SheetNames[0];
+          const sheet = workbook.Sheets[firstSheet];
+          
+          // ### INÍCIO DA CORREÇÃO CRÍTICA ###
+          // A opção `raw: false` instrui a biblioteca a retornar o texto formatado da célula (o que você vê no Excel), 
+          // em vez do valor bruto (que converte datas para números).
+          const json = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false }); 
+          // ### FIM DA CORREÇÃO CRÍTICA ###
+
+          const contentRows = json.filter(row => Array.isArray(row) && row.join('').trim() !== '');
+
+          if (contentRows.length > 0) {
+            // Converte cabeçalhos para string para consistência
+            const sheetHeaders = contentRows[0].map(h => (h === null || h === undefined) ? "" : String(h));
+            if (headers.length === 0) {
+              headers = sheetHeaders;
+            }
+            
+            const dataRows = contentRows.slice(1);
+            for (const row of dataRows) {
+              if (row.length === headers.length) {
+                // Converte CADA célula para string para normalizar os dados
+                const stringRow = row.map(cell => (cell === null || cell === undefined) ? "" : String(cell));
+                allRows.push(stringRow);
+              }
+            }
+          }
+        }
+      }
+      filteredRows = allRows.slice();
+      if (headers.length > 0) {
+        setupColumnSelectors();
+      }
+    }
+    
+    function applyFilters() {
+      filteredRows = allRows.filter((row) => {
+        let match = true;
+        Object.keys(activeFilters).forEach((idx) => {
+          if (
+            activeFilters[idx] &&
+            Array.isArray(activeFilters[idx]) &&
+            activeFilters[idx].length > 0
+          ) {
+            let cellVal = row[idx];
+            if (cellVal === null || typeof cellVal === "undefined") cellVal = "";
+            
+            if (!activeFilters[idx].includes(String(cellVal))) {
+              match = false;
+            }
+          }
+        });
+        return match;
+      });
+      plotOnMap();
+    }
+
+    function initMap(center = { lat: -15, lng: -56 }, zoom = 4) {
+      if (map) map = null;
+      map = new google.maps.Map(document.getElementById("map"), {
+        center: center,
+        zoom: zoom,
+      });
+      markers = [];
+    }
+
+    function plotOnMap() {
+      const latIndex = document.getElementById('lat-select').value;
+      const lngIndex = document.getElementById('lng-select').value;
+
+      document.getElementById("feedback").textContent = "";
+      if (latIndex === null || lngIndex === null || latIndex === '' || lngIndex === '') {
+        document.getElementById("feedback").textContent = "Selecione as colunas de latitude e longitude.";
+        initMap();
+        return;
+      }
+      
+      renderFiltersBar(latIndex, lngIndex);
+
+      let validPoints = [];
+      for (let row of filteredRows) {
+        let lat = parseFloat(String(row[latIndex]).replace(",", "."));
+        let lng = parseFloat(String(row[lngIndex]).replace(",", "."));
+        if (!isNaN(lat) && !isNaN(lng)) validPoints.push({ lat, lng, row });
+      }
+      if (validPoints.length === 0) {
+        document.getElementById("feedback").textContent = "Nenhuma coordenada válida encontrada para os filtros aplicados.";
+        initMap();
+        return;
+      }
+      initMap({ lat: validPoints[0].lat, lng: validPoints[0].lng }, 8);
+      validPoints.forEach((point) => {
+        let marker = new google.maps.Marker({
+          position: { lat: point.lat, lng: point.lng },
+          map: map,
+          animation: google.maps.Animation.DROP,
+        });
+        let infoContent =
+          '<div style="background:rgba(44,44,64,0.93);padding:8px 15px;border-radius:13px;box-shadow:0 3px 16px #0005;"><table style="color:#e3e6fe;font-size:.93em">';
+        headers.forEach((h, idx) => {
+          let cell = point.row[idx];
+          if (cell === null || typeof cell === "undefined" || cell === "") {
+            cell = "(vazio)";
+          }
+          infoContent += `<tr><td style="color:#ccc;font-weight:500;vertical-align:top;padding-right:7px;">${h}</td><td style="color:#fff;">${cell}</td></tr>`;
+        });
+        infoContent += "</table></div>";
+        let infowindow = new google.maps.InfoWindow({ content: infoContent });
+        marker.addListener("click", function () {
+          infowindow.open(map, marker);
+        });
+        markers.push(marker);
+      });
+    }
+
+    document.querySelector(".custom-file-input input").addEventListener("change", function (e) {
+        document.getElementById('column-selectors').classList.add('hidden');
+        document.getElementById('filters-bar').classList.add('hidden');
+        updateDocsList(e.target.files);
+    });
+
+    document.getElementById("plotButton").onclick = async function () {
+      let files = document.getElementById("fileInput").files;
+      if (!files || files.length === 0) {
+        document.getElementById("feedback").textContent = "Selecione pelo menos um arquivo.";
+        return;
+      }
+      document.getElementById("feedback").textContent = "Processando arquivos...";
+      activeFilters = {}; 
+      await processFiles(files);
+      plotOnMap(); 
+    };
+    
+    document.getElementById('lat-select').addEventListener('change', plotOnMap);
+    document.getElementById('lng-select').addEventListener('change', plotOnMap);
+
+
+    feather.replace();
+    initMap();
+  </script>
+</body>
+</html>
