@@ -135,7 +135,7 @@
       transform: scale(1.1) rotate(-8deg);
       color: #cccccc;
     }
-    #filters-bar {
+    #column-selectors, #filters-bar {
       display: flex;
       flex-wrap: wrap;
       align-items: center;
@@ -149,11 +149,18 @@
       font-size: 0.99em;
       color: var(--primary-text);
     }
-    #filters-bar label {
+    #column-selectors label, #filters-bar label {
       color: #cccccc;
       margin-right: 6px;
       font-weight: 500;
     }
+     #column-selectors select {
+        background: rgba(0,0,0,0.3);
+        color: #fff;
+        border: 1px solid var(--glass-border);
+        border-radius: 6px;
+        padding: 4px 8px;
+     }
     .filter-checkbox-group {
       display: flex;
       align-items: center;
@@ -225,7 +232,7 @@
       margin-bottom: 0;
     }
     .hidden {
-      display: none;
+      display: none !important;
     }
     #feedback {
       color: #ffdeef;
@@ -266,7 +273,7 @@
       .main-panel {
         padding: 0 0 8px 0;
       }
-      #filters-bar {
+      #filters-bar, #column-selectors {
         flex-direction: column;
         align-items: flex-start;
         gap: 4px;
@@ -291,6 +298,12 @@
       <button id="plotButton" class="glass-button"><span data-feather="map"></span>Plotar coordenadas</button>
     </div>
     <div class="docs-list" id="docsList"></div>
+    <div id="column-selectors" class="hidden">
+      <label for="lat-select">Coluna Latitude:</label>
+      <select id="lat-select"></select>
+      <label for="lng-select">Coluna Longitude:</label>
+      <select id="lng-select"></select>
+    </div>
     <div id="filters-bar" class="hidden"></div>
     <div id="feedback"></div>
   </div>
@@ -298,21 +311,18 @@
   <script>
     feather.replace();
 
-    // Detecta colunas latitude/longitude
     function isLatCol(name) {
-      name = name.trim().toLowerCase();
-      return ["lat", "latitude"].includes(name) || name.includes("lat");
+      name = (name || "").trim().toLowerCase();
+      return ["lat", "latitude"].some(term => name.includes(term));
     }
     function isLngCol(name) {
-      name = name.trim().toLowerCase();
-      return ["lon", "lng", "longitude", "long"].includes(name) || name.includes("lng") || name.includes("long");
+      name = (name || "").trim().toLowerCase();
+      return ["lon", "lng", "longitude", "long"].some(term => name.includes(term));
     }
-    // Detecta colunas de hora (para conversão)
     function isHourCol(name) {
       const lowered = (name || "").toLowerCase();
       return lowered.includes("hora") || lowered.includes("time");
     }
-    // Converte número decimal Excel para hora legível hh:mm:ss
     function excelNumberToTime(n) {
       if (isNaN(n)) return n;
       const totalSeconds = Math.round(24 * 60 * 60 * parseFloat(n));
@@ -320,18 +330,14 @@
       const m = Math.floor((totalSeconds % 3600) / 60);
       const s = totalSeconds % 60;
       return (
-        h.toString().padStart(2, "0") +
-        ":" +
-        m.toString().padStart(2, "0") +
-        ":" +
+        h.toString().padStart(2, "0") + ":" +
+        m.toString().padStart(2, "0") + ":" +
         s.toString().padStart(2, "0")
       );
     }
 
     let allRows = [];
     let headers = [];
-    let latIndex = -1;
-    let lngIndex = -1;
     let map;
     let markers = [];
     let fileNames = [];
@@ -339,44 +345,64 @@
     let filterFields = [];
     let activeFilters = {};
 
-    // Descobre campos de filtro (excluindo lat/lng)
-    function guessFilterFields() {
+    function setupColumnSelectors() {
+        const latSelect = document.getElementById('lat-select');
+        const lngSelect = document.getElementById('lng-select');
+        latSelect.innerHTML = '';
+        lngSelect.innerHTML = '';
+        
+        let latGuess = -1;
+        let lngGuess = -1;
+
+        headers.forEach((h, idx) => {
+            const option = new Option(h, idx);
+            latSelect.add(option.cloneNode(true));
+            lngSelect.add(option);
+            if (latGuess === -1 && isLatCol(h)) latGuess = idx;
+            if (lngGuess === -1 && isLngCol(h)) lngGuess = idx;
+        });
+
+        if (latGuess !== -1) latSelect.value = latGuess;
+        if (lngGuess !== -1) lngSelect.value = lngGuess;
+
+        document.getElementById('column-selectors').classList.remove('hidden');
+    }
+
+    function guessFilterFields(latIndex, lngIndex) {
       const candidates = [];
       headers.forEach((h, idx) => {
-        if (!isLatCol(h) && !isLngCol(h)) {
+        if (idx != latIndex && idx != lngIndex) {
           candidates.push({ header: h, idx });
         }
       });
       return candidates;
     }
 
-    function renderFiltersBar() {
+    function renderFiltersBar(latIndex, lngIndex) {
       const bar = document.getElementById("filters-bar");
       bar.innerHTML = "";
-      if (filterFields.length === 0) return;
+      filterFields = guessFilterFields(latIndex, lngIndex);
+      if (filterFields.length === 0) {
+        bar.classList.add('hidden');
+        return;
+      };
+
       filterFields.forEach((field) => {
         const group = document.createElement("div");
         group.className = "filter-checkbox-group";
-
         const checkbox = document.createElement("input");
         checkbox.type = "checkbox";
         checkbox.id = "filter-cb-" + field.idx;
-        checkbox.onchange = () => {
-          renderActiveFiltersInputs();
-        };
-
         const span = document.createElement("span");
         span.textContent = field.header;
         group.appendChild(checkbox);
         group.appendChild(span);
-
         const dropdownBtn = document.createElement("button");
         dropdownBtn.className = "dropdown-btn";
         dropdownBtn.type = "button";
         dropdownBtn.textContent = "Selecionar";
         dropdownBtn.style.display = "none";
         group.appendChild(dropdownBtn);
-
         const dropdown = document.createElement("div");
         dropdown.className = "option-dropdown";
         dropdown.id = "dropdown-" + field.idx;
@@ -387,8 +413,7 @@
           closeAllDropdowns();
           dropdown.classList.toggle("active");
         };
-
-        // Fecha todos dropdowns ao clicar fora
+        
         function closeAllDropdowns(evt) {
           document.querySelectorAll(".option-dropdown.active").forEach((dd) => {
             dd.classList.remove("active");
@@ -396,54 +421,42 @@
         }
         document.addEventListener("click", closeAllDropdowns);
 
-        // Função que preenche dropdown com opções fixas da planilha
         group._renderDropdown = function () {
           dropdown.innerHTML = "";
-          // O array `uniqOrdered` contém todas as opções na ordem da planilha, incluindo vazios e “0”, sem omitir repetidos
           const uniqOrdered = [];
           const seen = new Set();
           allRows.forEach((row) => {
             let val = row[field.idx];
-            // Use string "" para valores nulos/undefined/vazios
             if (val === null || typeof val === "undefined") val = "";
-            // Registramos só valores únicos para um dropdown limpo (por questão prática)
-            if (!seen.has(val)) {
-              seen.add(val);
+            const valAsString = String(val);
+            if (!seen.has(valAsString)) {
+              seen.add(valAsString);
               uniqOrdered.push(val);
             }
           });
-          // Agora adiciona ao dropdown
           uniqOrdered.forEach((val) => {
             const lab = document.createElement("label");
             const cb = document.createElement("input");
             cb.type = "checkbox";
-            cb.value = val;
-            cb.checked = (activeFilters[field.idx] || []).includes(val);
+            const valAsString = String(val);
+            cb.value = valAsString;
+            cb.checked = (activeFilters[field.idx] || []).includes(valAsString);
             cb.onchange = function () {
               if (!activeFilters[field.idx]) activeFilters[field.idx] = [];
+              const currentFilterValue = String(val);
               if (this.checked) {
-                activeFilters[field.idx].push(val);
+                activeFilters[field.idx].push(currentFilterValue);
               } else {
-                activeFilters[field.idx] = activeFilters[field.idx].filter((v) => v !== val);
+                activeFilters[field.idx] = activeFilters[field.idx].filter((v) => v !== currentFilterValue);
               }
               applyFilters();
             };
             lab.appendChild(cb);
-            // Converte valores de hora, se campo for hora
-            let text;
-            if (isHourCol(field.header) && !isNaN(val) && val !== "") {
-              text = excelNumberToTime(val);
-            } else if (val === "" || typeof val === "undefined") {
-              text = "(vazio)";
-            } else {
-              text = val;
-            }
+            let text = (val === "" || typeof val === "undefined") ? "(vazio)" : val;
             lab.appendChild(document.createTextNode(" " + text));
             dropdown.appendChild(lab);
           });
         };
-
-        // Exibe botão "Selecionar" e renderiza dropdown se selecionado
         checkbox.onchange = function () {
           if (checkbox.checked) {
             group._renderDropdown();
@@ -455,7 +468,6 @@
             dropdown.classList.remove("active");
           }
         };
-
         bar.appendChild(group);
       });
       bar.classList.remove("hidden");
@@ -483,54 +495,65 @@
       headers = [];
       for (let file of files) {
         let ext = file.name.split(".").pop().toLowerCase();
-        let data;
         if (ext === "csv") {
-          data = await new Promise((resolve, reject) => {
+          const data = await new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = (e) => resolve(e.target.result);
             reader.onerror = reject;
             reader.readAsText(file, "UTF-8");
           });
           let lines = data.split(/\r?\n/).filter((x) => x.trim() !== "");
-          let csvHeaders = lines[0].split(/[,;|\t]/);
-          if (headers.length === 0) headers = csvHeaders;
-          for (let i = 1; i < lines.length; i++) {
-            let values = lines[i].split(/[,;|\t]/);
-            if (values.length === csvHeaders.length) allRows.push(values);
+          if (lines.length > 0) {
+            let csvHeaders = lines[0].split(/[,;|\t]/);
+            if (headers.length === 0) headers = csvHeaders;
+            for (let i = 1; i < lines.length; i++) {
+                let values = lines[i].split(/[,;|\t]/);
+                if (values.length === headers.length) allRows.push(values);
+            }
           }
         } else if (ext === "xls" || ext === "xlsx") {
-          let buffer = await new Promise((resolve, reject) => {
+          const buffer = await new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = (e) => resolve(new Uint8Array(e.target.result));
             reader.onerror = reject;
             reader.readAsArrayBuffer(file);
           });
-          let workbook = XLSX.read(buffer, { type: "array" });
-          let firstSheet = workbook.SheetNames[0];
-          let sheet = workbook.Sheets[firstSheet];
-          let json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-          if (headers.length === 0) headers = json[0];
-          for (let i = 1; i < json.length; i++) {
-            if (json[i].length === headers.length) allRows.push(json[i]);
+          const workbook = XLSX.read(buffer, { type: "array" });
+          const firstSheet = workbook.SheetNames[0];
+          const sheet = workbook.Sheets[firstSheet];
+          
+          // ### INÍCIO DA CORREÇÃO CRÍTICA ###
+          // A opção `raw: false` instrui a biblioteca a retornar o texto formatado da célula (o que você vê no Excel), 
+          // em vez do valor bruto (que converte datas para números).
+          const json = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false }); 
+          // ### FIM DA CORREÇÃO CRÍTICA ###
+
+          const contentRows = json.filter(row => Array.isArray(row) && row.join('').trim() !== '');
+
+          if (contentRows.length > 0) {
+            // Converte cabeçalhos para string para consistência
+            const sheetHeaders = contentRows[0].map(h => (h === null || h === undefined) ? "" : String(h));
+            if (headers.length === 0) {
+              headers = sheetHeaders;
+            }
+            
+            const dataRows = contentRows.slice(1);
+            for (const row of dataRows) {
+              if (row.length === headers.length) {
+                // Converte CADA célula para string para normalizar os dados
+                const stringRow = row.map(cell => (cell === null || cell === undefined) ? "" : String(cell));
+                allRows.push(stringRow);
+              }
+            }
           }
         }
       }
-      setLatLngIndexes();
-      filterFields = guessFilterFields();
-      renderFiltersBar();
       filteredRows = allRows.slice();
-      plotOnMap();
-    }
-
-    function setLatLngIndexes() {
-      latIndex = -1;
-      lngIndex = -1;
-      for (let i = 0; i < headers.length; i++) {
-        if (isLatCol(headers[i])) latIndex = i;
-        if (isLngCol(headers[i])) lngIndex = i;
+      if (headers.length > 0) {
+        setupColumnSelectors();
       }
     }
-
+    
     function applyFilters() {
       filteredRows = allRows.filter((row) => {
         let match = true;
@@ -542,7 +565,10 @@
           ) {
             let cellVal = row[idx];
             if (cellVal === null || typeof cellVal === "undefined") cellVal = "";
-            if (!activeFilters[idx].includes(cellVal)) match = false;
+            
+            if (!activeFilters[idx].includes(String(cellVal))) {
+              match = false;
+            }
           }
         });
         return match;
@@ -560,21 +586,26 @@
     }
 
     function plotOnMap() {
+      const latIndex = document.getElementById('lat-select').value;
+      const lngIndex = document.getElementById('lng-select').value;
+
       document.getElementById("feedback").textContent = "";
-      if (latIndex === -1 || lngIndex === -1) {
-        document.getElementById("feedback").textContent =
-          "Colunas de latitude/longitude não identificadas.";
+      if (latIndex === null || lngIndex === null || latIndex === '' || lngIndex === '') {
+        document.getElementById("feedback").textContent = "Selecione as colunas de latitude e longitude.";
+        initMap();
         return;
       }
+      
+      renderFiltersBar(latIndex, lngIndex);
+
       let validPoints = [];
       for (let row of filteredRows) {
-        let lat = parseFloat(row[latIndex]);
-        let lng = parseFloat(row[lngIndex]);
+        let lat = parseFloat(String(row[latIndex]).replace(",", "."));
+        let lng = parseFloat(String(row[lngIndex]).replace(",", "."));
         if (!isNaN(lat) && !isNaN(lng)) validPoints.push({ lat, lng, row });
       }
       if (validPoints.length === 0) {
-        document.getElementById("feedback").textContent =
-          "Nenhuma coordenada válida encontrada para os filtros.";
+        document.getElementById("feedback").textContent = "Nenhuma coordenada válida encontrada para os filtros aplicados.";
         initMap();
         return;
       }
@@ -589,9 +620,6 @@
           '<div style="background:rgba(44,44,64,0.93);padding:8px 15px;border-radius:13px;box-shadow:0 3px 16px #0005;"><table style="color:#e3e6fe;font-size:.93em">';
         headers.forEach((h, idx) => {
           let cell = point.row[idx];
-          if (isHourCol(h) && !isNaN(cell) && cell !== "") {
-            cell = excelNumberToTime(cell);
-          }
           if (cell === null || typeof cell === "undefined" || cell === "") {
             cell = "(vazio)";
           }
@@ -607,8 +635,11 @@
     }
 
     document.querySelector(".custom-file-input input").addEventListener("change", function (e) {
-      updateDocsList(e.target.files);
+        document.getElementById('column-selectors').classList.add('hidden');
+        document.getElementById('filters-bar').classList.add('hidden');
+        updateDocsList(e.target.files);
     });
+
     document.getElementById("plotButton").onclick = async function () {
       let files = document.getElementById("fileInput").files;
       if (!files || files.length === 0) {
@@ -616,8 +647,14 @@
         return;
       }
       document.getElementById("feedback").textContent = "Processando arquivos...";
+      activeFilters = {}; 
       await processFiles(files);
+      plotOnMap(); 
     };
+    
+    document.getElementById('lat-select').addEventListener('change', plotOnMap);
+    document.getElementById('lng-select').addEventListener('change', plotOnMap);
+
 
     feather.replace();
     initMap();
